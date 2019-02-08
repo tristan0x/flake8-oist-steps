@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-from flake8_oist_steps import IdChecker
-
 import ast
 import unittest
+
+from flake8_oist_steps import IdChecker
 
 
 class TestBuiltins(unittest.TestCase):
@@ -21,4 +21,4 @@ class TestBuiltins(unittest.TestCase):
         )
         checker = IdChecker(tree, '/home/script.py')
         ret = [c for c in checker.run()]
-        self.assert_codes(ret, ['A001'])
+        self.assert_codes(ret, ['E421'])

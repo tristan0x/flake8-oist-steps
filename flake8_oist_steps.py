@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Flake8 Plugin that check usage of STEPS simulator
+"""
 import ast
 
 
@@ -12,100 +14,119 @@ FUNC_RETURNING_TET = {"findTetByPoint", "getTetTetNeighb", "getTetTetNeighb"}
 FUNC_RETURNING_TRI = {"getTetTriNeighb", "getTriTriNeighbs"}
 
 
-function_nodes = [ast.FunctionDef]
-if getattr(ast, "AsyncFunctionDef", None):
-    function_nodes.append(ast.AsyncFunctionDef)
-function_nodes = tuple(function_nodes)
+class CheckVisitor(ast.NodeTransformer):
+    """Traverse source code AST and check usage of STEPS functions
+    """
 
-for_nodes = [ast.For]
-if getattr(ast, "AsyncFor", None):
-    for_nodes.append(ast.AsyncFor)
-for_nodes = tuple(for_nodes)
+    def __init__(self):
+        self.steps_ids = dict()
+        self.errors = []
+        super(CheckVisitor, self).__init__()
 
-with_nodes = [ast.With]
-if getattr(ast, "AsyncWith", None):
-    with_nodes.append(ast.AsyncWith)
-with_nodes = tuple(with_nodes)
+    def visit_Assign(self, node):  # pylint: disable=C0103
+        """Visit Python assignments
+
+        track variables that store results STEPS functions
+        returning identifiers
+        """
+        self.visit(node.value)
+        steps_id = getattr(node.value, "steps_id", False)
+        for target in node.targets:
+            if steps_id:
+                if isinstance(target, ast.Name):
+                    self.steps_ids[target.id] = steps_id
+                elif isinstance(target, ast.Subscript):
+                    if isinstance(target.value, ast.Name):
+                        self.steps_ids[target.value.id] = steps_id
+
+    def visit_Compare(self, node):  # pylint: disable=C0103
+        """visit Python comparison
+
+        Ensure that variable containing STEPS identifiers are not compared to -1
+        """
+        self.visit(node.left)
+        for operation in node.ops:
+            if isinstance(operation, (ast.Eq, ast.NotEq)):
+                for comp in node.comparators:
+                    self.visit(comp)
+                if isinstance(node.left, ast.Name):
+                    if node.left.id in self.steps_ids:
+                        if len(node.comparators) == 1:
+                            if getattr(node.comparators[0], "is_minus_one", False):
+                                self.errors.append(
+                                    [
+                                        node.lineno,
+                                        node.col_offset,
+                                        self.steps_ids[node.left.id],
+                                        IdChecker,
+                                    ]
+                                )
+
+    def visit_Num(self, node):  # pylint: disable=C0103,R0201
+        """Visit number (Python 2)
+
+        Mark node if value is -1
+        """
+        if node.n == -1:
+            node.is_minus_one = True
+
+    def visit_UnaryOp(self, node):  # pylint: disable=C0103,R0201
+        """Visit number (Python 3)
+
+        Mark node if value is -1
+        """
+        if isinstance(node.op, ast.USub):
+            if isinstance(node.operand, ast.Num):
+                if node.operand.n == 1:
+                    node.is_minus_one = True
+
+    def visit_Call(self, node):  # pylint: disable=C0103,R0201
+        """visit function call
+
+        Identify possible error according to called STEPS function
+        """
+        if isinstance(node.func, ast.Attribute):
+            if node.func.attr in FUNC_RETURNING_TET:
+                node.steps_id = IdChecker.tet_id_mesg
+            elif node.func.attr in FUNC_RETURNING_TRI:
+                node.steps_id = IdChecker.tri_id_mesg
 
 
-class IdChecker(object):
+class IdChecker:
+    """Flake8 checker to enforce usage of STEPS simulator"""
+
     name = "flake8_oist_steps"
     version = "0.0.1"
     tet_id_mesg = (
         "E421 consider using steps.geom.UNKNOWN_TET" " constant instead of -1."
     )
     tri_id_mesg = (
-        "E421 consider using steps.geom.UNKNOWN_TRI" " constant instead of -1."
+        "E422 consider using steps.geom.UNKNOWN_TRI" " constant instead of -1."
     )
 
     def __init__(self, tree, filename):
-        self.tree = tree
-        self.filename = filename
+        self._tree = tree
+        self._filename = filename
+
+    @property
+    def tree(self):
+        """get source code Abstract Syntax Tree"""
+        return self._tree
+
+    @property
+    def filename(self):
+        """get source code filename"""
+        return self._filename
 
     def run(self):
+        """check the code"""
         tree = self.tree
 
         if self.filename == "stdin":
             lines = stdin_utils.stdin_get_value()
             tree = ast.parse(lines)
 
-        for statement in ast.walk(tree):
-            for child in ast.iter_child_nodes(statement):
-                child.__flake8_builtins_parent = statement
-
-        class PrintVisitor(ast.NodeTransformer):
-            def __init__(self):
-                self.steps_ids = dict()
-                self.errors = []
-                super(PrintVisitor, self).__init__()
-
-            def visit_Assign(self, node):
-                self.visit(node.value)
-                steps_id = getattr(node.value, "_steps_id", False)
-                for target in node.targets:
-                    if steps_id:
-                        if isinstance(target, ast.Name):
-                            self.steps_ids[target.id] = steps_id
-                        elif isinstance(target, ast.Subscript):
-                            if isinstance(target.value, ast.Name):
-                                self.steps_ids[target.value.id] = steps_id
-
-            def visit_Compare(self, node):
-                self.visit(node.left)
-                for op in node.ops:
-                    if isinstance(op, (ast.Eq, ast.NotEq)):
-                        for n in node.comparators:
-                            self.visit(n)
-                        if isinstance(node.left, ast.Name):
-                            if node.left.id in self.steps_ids:
-                                if len(node.comparators) == 1:
-                                    if getattr(node.comparators[0], "_is_minus_one", False):
-                                        self.errors.append(
-                                            [
-                                                node.lineno,
-                                                node.col_offset,
-                                                self.steps_ids[node.left.id],
-                                                IdChecker,
-                                            ]
-                                        )
-
-            def visit_UnaryOp(self, node):
-                if isinstance(node.op, ast.USub):
-                    if isinstance(node.operand, ast.Num):
-                        if node.operand.n == 1:
-                            node._is_minus_one = True
-
-            def visit_Call(self, node):
-                if isinstance(node.func, ast.Attribute):
-                    if node.func.attr in FUNC_RETURNING_TET:
-                        node._steps_id = IdChecker.tet_id_mesg
-                    elif node.func.attr in FUNC_RETURNING_TRI:
-                        node._steps_id = IdChecker.tri_id_mesg
-
-            def generic_visit(self, node):
-                super(PrintVisitor, self).generic_visit(node)
-
-        v = PrintVisitor()
-        v.visit(tree)
-        for error in v.errors:
+        visitor = CheckVisitor()
+        visitor.visit(tree)
+        for error in visitor.errors:
             yield error
