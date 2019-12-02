@@ -11,15 +11,12 @@ long_description = '{0}\n{1}'.format(
     open('CHANGES.rst').read(),
 )
 
-with open('LICENSE') as f:
-    license = f.read()
-
 setup(
     name='flake8-oist-steps',
-    version='0.0.1.dev0',
     description=short_description,
     long_description=long_description,
-    license=license,
+    long_description_content_type='text/x-rst',
+    license='MIT License',
     use_scm_version=True,
     # Get more from https://pypi.org/pypi?%3Aaction=list_classifiers
     classifiers=[
@@ -27,7 +24,7 @@ setup(
         'Environment :: Console',
         'Framework :: Flake8',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: BSD License',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
