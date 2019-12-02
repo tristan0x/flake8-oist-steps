@@ -10,7 +10,7 @@ Install with pip::
 
 Requirements
 ------------
-- Python 2.7, 3.5, 3.6, 3.7
+- Python 3.5, 3.6, 3.7, or 3.8
 - flake8
 
 Usage
